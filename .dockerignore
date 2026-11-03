@@ -1,0 +1,21 @@
+# Runtime data — should never be baked into the image
+lending.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Git / editor / OS cruft
+.git
+.gitignore
+.gitattributes
+.vscode/
+.idea/
+.DS_Store
+
+# Docker's own files and docs don't need to be in the build context
+Dockerfile
+docker-compose.yml
+.dockerignore
+README.md

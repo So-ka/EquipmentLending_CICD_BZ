@@ -1,0 +1,11 @@
+services:
+  lending:
+    build: .
+    image: equipment-lending:latest
+    # Only the database crosses the container boundary — the code comes
+    # from the image. lending.db must exist on the host first (run
+    # `make lending.db`, or `touch lending.db`), otherwise Docker will
+    # bind-mount a directory instead of a file and sqlite3 will fail to
+    # open it.
+    volumes:
+      - ./lending.db:/app/lending.db
