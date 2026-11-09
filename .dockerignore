@@ -19,3 +19,10 @@ __pycache__/
 .venv/
 .pytest_cache/
 data/
+
+.github/
+.gitlab-ci.yml
+scripts/
+htmlcov/
+coverage.xml
+.coverage

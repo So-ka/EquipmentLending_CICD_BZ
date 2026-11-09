@@ -2,8 +2,7 @@
 from flask import Blueprint, flash, g, redirect, render_template, request, url_for
 
 from . import services
-from .errors import ValidationError
-from .errors import AppError
+from .errors import AppError, ValidationError
 
 web = Blueprint("web", __name__)
 

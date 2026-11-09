@@ -34,7 +34,7 @@ def parse_date(value, field="date"):
     try:
         return date.fromisoformat(value)
     except ValueError:
-        raise ValidationError(f"'{field}' is not a real calendar date.", {"field": field})
+        raise ValidationError(f"'{field}' is not a real calendar date.", {"field": field}) from None
 
 
 def ranges_overlap(a_from, a_to, b_from, b_to):

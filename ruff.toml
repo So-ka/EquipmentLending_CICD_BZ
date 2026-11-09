@@ -1,0 +1,7 @@
+line-length = 120
+target-version = "py312"
+extend-exclude = [".venv"]
+
+[lint]
+# E/W pycodestyle, F pyflakes (unused imports/names), I import order, B likely bugs
+select = ["E", "W", "F", "I", "B"]

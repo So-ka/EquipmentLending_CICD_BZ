@@ -3,4 +3,9 @@ __pycache__/
 *.pyc
 .venv/
 .pytest_cache/
-devnotes.md
+
+htmlcov/
+coverage.xml
+.coverage
+junit.xml
+gl-code-quality-report.json

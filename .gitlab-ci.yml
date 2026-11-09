@@ -1,0 +1,82 @@
+# GitLab CI mirror of .github/workflows/*.yml
+#   test    : build check + unit tests (JUnit report shown in the pipeline's "Tests" tab)
+#   quality : ruff lint + coverage (percentage shown on the job, cobertura in the MR diff)
+#   build   : build the Docker image, run the tests in it, smoke-test the running container
+stages: [test, quality, build]
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never            # avoid a duplicate branch pipeline next to the MR pipeline
+    - if: $CI_COMMIT_BRANCH
+
+default:
+  image: python:3.12-slim
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+
+.python-job: &python-job
+  cache:
+    key: pip-$CI_COMMIT_REF_SLUG
+    paths: [.cache/pip]
+  before_script:
+    - pip install -r requirements-dev.txt
+
+unit-tests:
+  <<: *python-job
+  stage: test
+  script:
+    - python -m compileall -q app lending.py wsgi.py
+    - python -m pytest --junitxml=junit.xml
+  artifacts:
+    when: always
+    paths: [junit.xml]
+    reports:
+      junit: junit.xml
+
+lint:
+  <<: *python-job
+  stage: quality
+  script:
+    - ruff check . --output-format=gitlab > gl-code-quality-report.json || true   # report for the MR widget
+    - ruff check .                                                                 # fails the job on any finding
+  artifacts:
+    when: always
+    reports:
+      codequality: gl-code-quality-report.json
+
+coverage:
+  <<: *python-job
+  stage: quality
+  script:
+    - python -m pytest --cov --cov-report=xml --cov-report=html --cov-report=term
+  coverage: '/^TOTAL.*\s(\d+(?:\.\d+)?)%$/'
+  artifacts:
+    when: always
+    paths: [htmlcov/]
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+
+docker-build:
+  stage: build
+  image: docker:27
+  services:
+    - docker:27-dind          # needs a runner with privileged mode (GitLab.com shared runners have it)
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+  script:
+    - docker build --target test -t equipment-lending:test .
+    - docker run --rm equipment-lending:test
+    - docker build -t equipment-lending:$CI_COMMIT_SHORT_SHA .
+    - docker run -d --name lending -v lending-data:/data equipment-lending:$CI_COMMIT_SHORT_SHA
+    - docker exec -i lending python - http://127.0.0.1:8000 write < scripts/smoke.py
+    - docker rm -f lending
+    - docker run -d --name lending -v lending-data:/data equipment-lending:$CI_COMMIT_SHORT_SHA
+    - docker exec -i lending python - http://127.0.0.1:8000 read < scripts/smoke.py
+    - docker image ls equipment-lending
+  after_script:
+    - docker logs lending || true

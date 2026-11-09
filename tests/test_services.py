@@ -155,8 +155,8 @@ def test_list_loans_filters(conn, eq):
     a = s.create_loan(conn, eq, "2026-11-01", "2026-11-02")
     s.create_loan(conn, other, "2026-11-01", "2026-11-02")
     s.cancel_loan(conn, a["id"])
-    assert [l["id"] for l in s.list_loans(conn, status="active")] == [2]
-    assert [l["id"] for l in s.list_loans(conn, equipment_id=eq)] == [1]
+    assert [x["id"] for x in s.list_loans(conn, status="active")] == [2]
+    assert [x["id"] for x in s.list_loans(conn, equipment_id=eq)] == [1]
     with pytest.raises(ValidationError):
         s.list_loans(conn, status="bogus")
 
@@ -200,6 +200,7 @@ def test_concurrent_overlapping_requests_only_one_wins(tmp_path):
     """The overlap check and insert are one transaction, so racing requests
     from separate connections (as with multiple gunicorn workers) can't both pass."""
     import threading
+
     from app import db
 
     path = str(tmp_path / "race.db")

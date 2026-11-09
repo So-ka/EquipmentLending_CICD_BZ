@@ -1,6 +1,6 @@
 """JSON REST API, mounted at /api/v1. See openapi.yaml for the contract."""
-from werkzeug.exceptions import HTTPException, InternalServerError
 from flask import Blueprint, Response, current_app, g, jsonify, request, url_for
+from werkzeug.exceptions import HTTPException, InternalServerError
 
 from . import services
 from .errors import AppError, ValidationError
@@ -80,7 +80,7 @@ def int_arg(name):
     try:
         return int(raw)
     except ValueError:
-        raise ValidationError(f"'{name}' must be an integer.", {"field": name})
+        raise ValidationError(f"'{name}' must be an integer.", {"field": name}) from None
 
 
 # ------------------------------------------------------------------- misc

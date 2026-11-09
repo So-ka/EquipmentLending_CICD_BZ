@@ -142,10 +142,31 @@ def test_every_api_route_is_documented(client):
         if m in ("get", "post", "put", "patch", "delete")
     }
     skip = {f"{API}/docs", f"{API}/openapi.yaml"}
+    names = {"equipment_id": "equipmentId", "loan_id": "loanId"}
     actual = set()
     for rule in app.url_map.iter_rules():
         if rule.rule.startswith(API) and rule.rule not in skip:
-            path = re.sub(r"<int:(\w+)>", lambda m: "{" + {"equipment_id": "equipmentId", "loan_id": "loanId"}[m.group(1)] + "}", rule.rule[len(API):])
+            path = re.sub(r"<int:(\w+)>", lambda m: "{" + names[m.group(1)] + "}", rule.rule[len(API):])
             for m in rule.methods - {"HEAD", "OPTIONS"}:
                 actual.add((path, m))
     assert actual == documented
+
+
+def test_swagger_page_points_at_spec(client):
+    r = client.get(f"{API}/docs")
+    assert r.status_code == 200 and b"/api/v1/openapi.yaml" in r.data
+
+
+def test_unexpected_error_returns_json_500(client, monkeypatch):
+    from app import services
+    client.application.testing = False  # let the app's own handler answer, as in production
+    monkeypatch.setattr(services, "list_equipment", lambda *a, **k: 1 / 0)
+    r = client.get(f"{API}/equipment")
+    assert_error(r, 500, "internal_error")
+
+
+def test_other_http_errors_use_envelope(client):
+    r = client.post(f"{API}/equipment", data=b"x" * 10, content_type="application/json")
+    assert_error(r, 400, "validation_error")
+    r = client.get(f"{API}/equipment", headers={"Content-Type": "text/plain"})
+    assert r.status_code == 200

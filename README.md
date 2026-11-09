@@ -1,5 +1,8 @@
 # Equipment Lending System
 
+![CI](https://github.com/OWNER/REPO/actions/workflows/ci.yml/badge.svg) ![Quality](https://github.com/OWNER/REPO/actions/workflows/quality.yml/badge.svg)
+<!-- replace OWNER/REPO with your GitHub path -->
+
 Web application (HTML forms + JSON REST API) for managing equipment and loans.
 Checkpoint 3 — built from the Checkpoint 1 CLI; the CLI still works and shares the same rules.
 
@@ -33,7 +36,7 @@ docker compose run --rm --build tests        # run tests
 ```
 
 Other helpers: `make logs`, `make reset` (**deletes the database volume**),
-`make test-local` (tests with a local Python 3.9+ in `.venv`, no Docker).
+`make test-local` (tests with a local Python 3.10+ in `.venv`, no Docker).
 
 ## Data persistence
 
@@ -106,6 +109,58 @@ curl -X POST localhost:8000/api/v1/loans/1/cancel
 and a check that every route is documented in `openapi.yaml`), `tests/test_web.py`
 (every form workflow, plus the CLI wrapper).
 
+## Continuous integration (Checkpoint 4)
+
+| | GitHub Actions | GitLab CI |
+|---|---|---|
+| Build + unit tests | `.github/workflows/ci.yml` → job **Build & unit tests** | `.gitlab-ci.yml` → `unit-tests` |
+| Docker image build + smoke test | `ci.yml` → job **Docker image build & smoke test** | `docker-build` |
+| Extra check: lint (ruff) + coverage ≥ 90 % | `.github/workflows/quality.yml` | `lint`, `coverage` |
+
+All run on every push and pull request / merge request.
+Run the same checks locally:
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest --junitxml=junit.xml      # unit tests (69)
+ruff check .                               # lint
+python -m pytest --cov                     # coverage, fails under 90 % (see .coveragerc)
+```
+
+**Where results are visible**
+* GitHub: the run page's *Summary* shows a test-result table and a coverage table; lint findings appear as inline annotations; `junit-report` and `coverage-report` (HTML) are downloadable artifacts; the README badges show pass/fail.
+* GitLab: the pipeline's *Tests* tab (JUnit), coverage % on the `coverage` job, code-quality report, `htmlcov` artifact.
+
+The Docker job builds the `test` image and runs the tests in it, builds the runtime image through
+`docker compose up --build`, drives the real HTTP API with `scripts/smoke.py`, then restarts the stack to prove the
+data survived in the `lending-data` volume.
+
+### Publishing and demonstrating (what to do once)
+
+```bash
+git init -b main && git add . && git commit -m "Checkpoint 4: CI"
+git remote add origin https://github.com/OWNER/REPO.git       # create an empty repo first
+git push -u origin main                                       # -> both workflows run; wait for green
+git remote add gitlab https://gitlab.<university>/<you>/REPO.git
+git push gitlab main                                          # -> GitLab pipeline runs
+```
+
+Failing run, then the fix (on a branch, so `main` stays green):
+
+```bash
+git switch -c demo/broken-overlap
+# in app/services.py, ranges_overlap(): change  a_from <= b_to and b_from <= a_to
+#                                       into    a_from <  b_to and b_from <  a_to
+git commit -am "Break overlap rule (demo)" && git push -u origin demo/broken-overlap
+# -> CI fails: 4 tests red (test_ranges_overlap[...], test_overlapping_active_loan_rejected, ...)
+#    save this run's URL as the "failed run" link; push to GitLab too (git push gitlab demo/broken-overlap)
+git revert HEAD --no-edit && git push                         # -> green again; this is the "fixed run"
+# open a pull request / merge into main so that main's latest run is green
+```
+
+Submit: the three workflow YAML files, the GitHub run URLs (green on `main`, red on the demo branch, green after
+the fix) and the equivalent GitLab pipeline URLs.
+
 ## CLI (still available)
 
 ```bash
@@ -122,5 +177,7 @@ wsgi.py         gunicorn entry point
 openapi.yaml    API contract
 tests/          pytest suite
 Dockerfile      stages: base, test, runtime
+.github/workflows/  ci.yml, quality.yml      .gitlab-ci.yml
+scripts/        smoke.py (HTTP end-to-end), junit_summary.py
 docker-compose.yml, Makefile, requirements*.txt
 ```
