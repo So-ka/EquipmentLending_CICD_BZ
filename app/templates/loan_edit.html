@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Change loan{% endblock %}
+{% block content %}
+<h1>Change loan #{{ loan.id }}</h1>
+<p class="muted">{{ item.name }} (equipment #{{ item.id }}) · currently {{ loan.from_date }} → {{ loan.to_date }} · {{ loan.status }}</p>
+<section>
+  {% if loan.status == 'active' %}
+  <form class="inline" method="post">
+    <label>From <input type="date" name="from_date" required value="{{ form.get('from_date','') }}"></label>
+    <label>To <input type="date" name="to_date" required value="{{ form.get('to_date','') }}"></label>
+    <button>Save</button>
+    <a class="btn secondary" href="{{ url_for('web.loans_page') }}">Back</a>
+  </form>
+  {% else %}<p>This loan is {{ loan.status }} and can no longer be changed.</p>
+  <a class="btn secondary" href="{{ url_for('web.loans_page') }}">Back</a>{% endif %}
+</section>
+{% endblock %}

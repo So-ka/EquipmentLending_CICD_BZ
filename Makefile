@@ -1,16 +1,30 @@
-IMAGE := equipment-lending
+.PHONY: up down test test-local logs reset import-db
 
-.PHONY: build run shell
+# Start the web app in the background -> http://localhost:8000
+up:
+	docker compose up --build -d --wait
 
-build:
-	docker build -t $(IMAGE) .
+# Stop it. Data is kept in the `lending-data` volume.
+down:
+	docker compose down
 
-# Ensures lending.db exists on the host *before* it's bind-mounted into
-# the container. Without this, Docker creates a directory in its place
-# (since the mount target doesn't exist yet) and sqlite3 fails to open it.
-lending.db:
-	touch lending.db
+# Run the test suite inside Docker (nothing to install locally).
+test:
+	docker compose run --rm --build tests
 
-# Usage: make run ARGS="equipment list"
-run: build lending.db
-	docker run --rm -v "$(CURDIR)/lending.db:/app/lending.db" $(IMAGE) $(ARGS)
+# Run the tests with a local Python 3.9+ (creates .venv).
+test-local:
+	python3 -m venv .venv && .venv/bin/pip install -q -r requirements-dev.txt && .venv/bin/python -m pytest
+
+logs:
+	docker compose logs -f web
+
+# DANGER: stops the app AND deletes the database volume.
+reset:
+	docker compose down -v
+
+# Load an existing SQLite file (e.g. the Checkpoint 1 one) into the volume:
+#   make import-db DB=./lending.db      (stop the app first: make down)
+import-db:
+	@test -n "$(DB)" || (echo "usage: make import-db DB=path/to/lending.db" && exit 1)
+	docker compose run --rm --no-deps -v "$(abspath $(DB)):/import/lending.db:ro" --entrypoint cp web /import/lending.db /data/lending.db

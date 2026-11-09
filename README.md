@@ -1,118 +1,126 @@
 # Equipment Lending System
 
-A command-line application for managing equipment and loans (Project Checkpoint 1).
+Web application (HTML forms + JSON REST API) for managing equipment and loans.
+Checkpoint 3 — built from the Checkpoint 1 CLI; the CLI still works and shares the same rules.
 
-## User stories implemented
-- Add, update, remove, and view equipment.
-- Create, view, change, and cancel loans.
-- Search for equipment available during a date range.
-- The system prevents overlapping loans of the same equipment.
+**Web address (Docker Compose): http://localhost:8000**
 
-## Requirements
-- Python 3.8+ (standard library only — no external dependencies)
-- Docker (optional, only if you want to run it in a container)
+| What | URL |
+|---|---|
+| Web app (forms) | http://localhost:8000/ |
+| REST API base | http://localhost:8000/api/v1 |
+| Interactive API docs (Swagger UI, loads from a CDN) | http://localhost:8000/api/v1/docs |
+| OpenAPI spec | `openapi.yaml` · http://localhost:8000/api/v1/openapi.yaml |
 
-## How to start the application
-No installation step is required beyond having Python 3 installed.
+## Commands (from a fresh checkout)
 
-```bash
-python3 lending.py --help
-```
-
-Data is stored persistently in `lending.db` (SQLite), created automatically
-in the same folder on first run, so it survives restarts.
-
-## Run with Docker
-
-The app is also packaged as a Docker image. The code (`lending.py`) is
-baked into the image at build time; only `lending.db` is mounted in from
-the host, so your data persists across runs and container rebuilds.
-
-**Important:** `lending.db` must exist on the host *before* you mount it
-in. If it doesn't, Docker will bind-mount an empty directory in its place
-instead of a file, and the app will fail to open it. `make run` handles
-this for you automatically; the other methods below need one `touch`
-first.
-
-### Using `make` (recommended)
+Requires Docker with the Compose plugin and `make`. Nothing else to install.
 
 ```bash
-make run ARGS="equipment list"
-make run ARGS="equipment add --name 'Projector' --description 'HD projector'"
-make run ARGS="loan create --equipment 1 --from 2026-11-01 --to 2026-11-05"
+git clone <your-repo-url> equipment-lending && cd equipment-lending
+
+make up      # build + start in the background, waits until healthy  -> http://localhost:8000
+make down    # stop and remove the containers (data is kept)
+make test    # run the unit/API tests inside Docker
 ```
 
-### Using `docker` directly
+Without `make`, the equivalent commands are:
 
 ```bash
-# lending.db must exist first — skip this line if it's already there
-touch lending.db
-
-docker build -t equipment-lending .
-docker run --rm -v "$(pwd)/lending.db:/app/lending.db" equipment-lending equipment list
-docker run --rm -v "$(pwd)/lending.db:/app/lending.db" equipment-lending equipment add --name "Projector" --description "HD projector"
-docker run --rm -v "$(pwd)/lending.db:/app/lending.db" equipment-lending loan create --equipment 1 --from 2026-11-01 --to 2026-11-05
+docker compose up --build -d --wait          # start
+docker compose down                          # stop
+docker compose run --rm --build tests        # run tests
 ```
 
-### Using `docker compose`
+Other helpers: `make logs`, `make reset` (**deletes the database volume**),
+`make test-local` (tests with a local Python 3.9+ in `.venv`, no Docker).
+
+## Data persistence
+
+The SQLite file lives at `/data/lending.db` inside the container, on the named
+Docker volume `lending-data`. It survives `make down`/`make up`, image rebuilds
+and container removal; only `docker compose down -v` / `make reset` deletes it.
+
+To load an existing database (e.g. your Checkpoint 1 `lending.db`):
 
 ```bash
-touch lending.db   # same prerequisite as above
-
-docker compose build
-docker compose run --rm lending equipment list
-docker compose run --rm lending equipment add --name "Projector" --description "HD projector"
-docker compose run --rm lending loan create --equipment 1 --from 2026-11-01 --to 2026-11-05
+make down
+make import-db DB=./lending.db
+make up
 ```
 
-## API / command reference
+## Web forms
 
-```
-$ python lending.py --help
-Usage: lending.py COMMAND [OPTIONS]
+| Workflow | Where |
+|---|---|
+| Add / edit / remove equipment | **Equipment** page |
+| Find equipment free during a date range | **Equipment** page → "Find available equipment" |
+| Create a loan | **Loans** page → "Create loan" |
+| View / filter loans | **Loans** page |
+| Change loan dates / cancel a loan | **Loans** page → *Change* / *Cancel* |
 
-Commands:
-  equipment list
-  equipment add --name NAME --description TEXT
-  equipment update ID [--name NAME] [--description TEXT]
-  equipment remove ID
-  loan list
-  loan create --equipment ID --from DATE --to DATE
-  loan change ID [--from DATE] [--to DATE]
-  loan cancel ID
-  equipment search --from DATE --to DATE
-```
+## REST API summary
 
-Dates use `YYYY-MM-DD` format.
+Full details, parameters, examples and error responses are in `openapi.yaml`.
 
-## Try it out
+| Method & URL | Purpose | Success |
+|---|---|---|
+| `GET /api/v1/equipment[?available_from=&available_to=]` | List (optionally only free in range) | 200 |
+| `POST /api/v1/equipment` | Add | 201 + `Location` |
+| `GET /api/v1/equipment/{id}` | Read | 200 |
+| `PATCH /api/v1/equipment/{id}` | Update name/description | 200 |
+| `DELETE /api/v1/equipment/{id}` | Remove | 204 |
+| `GET /api/v1/loans[?equipment_id=&status=]` | List | 200 |
+| `POST /api/v1/loans` | Create | 201 + `Location` |
+| `GET /api/v1/loans/{id}` | Read | 200 |
+| `PATCH /api/v1/loans/{id}` | Change dates (active loans only) | 200 |
+| `POST /api/v1/loans/{id}/cancel` | Cancel (idempotent) | 200 |
+| `GET /api/v1/health` | Health check | 200 |
+
+Errors always look like `{"error": {"code", "message", "details"}}` with status
+400 (validation), 404, 405, 409 (conflict), 415 or 500.
 
 ```bash
-python3 lending.py equipment add --name "Projector" --description "HD projector"
-python3 lending.py equipment add --name "Camera" --description "DSLR camera"
-python3 lending.py equipment list
-
-python3 lending.py loan create --equipment 1 --from 2026-11-01 --to 2026-11-05
-python3 lending.py loan list
-
-# This fails: Projector (equipment 1) is already loaned in that range
-python3 lending.py loan create --equipment 1 --from 2026-11-03 --to 2026-11-10
-
-# Only shows equipment with no conflicting active loan
-python3 lending.py equipment search --from 2026-11-01 --to 2026-11-05
-
-python3 lending.py loan cancel 1
+curl -X POST localhost:8000/api/v1/equipment -H 'Content-Type: application/json' \
+     -d '{"name":"Projector","description":"HD projector"}'
+curl -X POST localhost:8000/api/v1/loans -H 'Content-Type: application/json' \
+     -d '{"equipment_id":1,"from_date":"2026-11-01","to_date":"2026-11-05"}'
+# overlapping request -> 409
+curl -i -X POST localhost:8000/api/v1/loans -H 'Content-Type: application/json' \
+     -d '{"equipment_id":1,"from_date":"2026-11-03","to_date":"2026-11-10"}'
+curl -X POST localhost:8000/api/v1/loans/1/cancel
 ```
 
+## Business rules (tested in `tests/test_services.py`)
 
-## Project structure
+* Dates are `YYYY-MM-DD`, real calendar dates; `from_date` ≤ `to_date`; ranges are inclusive.
+* Active loans of the same equipment may not overlap; cancelled loans never conflict. The check and the write happen in one transaction, so concurrent requests cannot double-book.
+* Only active loans can be changed; cancelling twice is harmless.
+* Equipment with active loans cannot be removed (409). *Change from Checkpoint 1, which silently deleted its loans.* Cancelled loans are removed with the equipment.
+* Equipment name is required (max 100 chars); description max 500.
+
+## Tests
+
+`tests/test_services.py` (rules, incl. a concurrency test), `tests/test_api.py`
+(URLs, methods, status codes, JSON, persistence across restarts, OpenAPI validity,
+and a check that every route is documented in `openapi.yaml`), `tests/test_web.py`
+(every form workflow, plus the CLI wrapper).
+
+## CLI (still available)
+
+```bash
+pip install -r requirements.txt
+LENDING_DB=./lending.db python3 lending.py equipment list
 ```
-.
-├── lending.py              # CLI application (equipment + loan commands)
-├── lending.db              # SQLite database (created automatically)
-├── Dockerfile              # Container image definition (code baked in)
-├── .dockerignore           # Files excluded from the Docker build context
-├── docker-compose.yml      # Convenience wrapper for build/run
-├── Makefile                # `make run ARGS="..."` — handles the lending.db prerequisite
-└── README.md
+
+## Layout
+
+```
+app/            __init__ (app factory), db, services (rules), api (REST), web (forms), templates/
+lending.py      CLI wrapper over app.services
+wsgi.py         gunicorn entry point
+openapi.yaml    API contract
+tests/          pytest suite
+Dockerfile      stages: base, test, runtime
+docker-compose.yml, Makefile, requirements*.txt
 ```

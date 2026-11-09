@@ -1,0 +1,375 @@
+openapi: 3.0.3
+info:
+  title: Equipment Lending API
+  version: 1.0.0
+  description: |
+    Manage equipment and loans of that equipment.
+
+    **Rules enforced by the API**
+    * Dates are `YYYY-MM-DD`; ranges are inclusive (a loan ending on the 5th
+      conflicts with one starting on the 5th).
+    * `from_date` must not be after `to_date`.
+    * Two *active* loans of the same equipment may not overlap. Cancelled loans
+      never conflict.
+    * Only active loans can be changed. Cancelling is idempotent.
+    * Equipment with active loans cannot be deleted (cancel the loans first).
+      Its cancelled loans are removed together with it.
+
+    All errors use the same JSON envelope (see `Error`).
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Docker Compose / local default
+tags:
+  - name: Equipment
+  - name: Loans
+  - name: System
+paths:
+  /health:
+    get:
+      tags: [System]
+      summary: Liveness and database check
+      operationId: health
+      responses:
+        "200":
+          description: Service is up.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: {type: string, example: ok}
+  /equipment:
+    get:
+      tags: [Equipment]
+      summary: List equipment, optionally only items free during a date range
+      operationId: listEquipment
+      parameters:
+        - name: available_from
+          in: query
+          description: Start of the range. Must be sent together with `available_to`.
+          schema: {type: string, format: date, example: "2026-11-01"}
+        - name: available_to
+          in: query
+          description: End of the range (inclusive).
+          schema: {type: string, format: date, example: "2026-11-05"}
+      responses:
+        "200":
+          description: Equipment with no active loan overlapping the range (or all equipment).
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/EquipmentList"}
+              example:
+                items:
+                  - {id: 2, name: Camera, description: DSLR camera}
+                count: 1
+        "400": {$ref: "#/components/responses/ValidationError"}
+    post:
+      tags: [Equipment]
+      summary: Add equipment
+      operationId: createEquipment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/EquipmentCreate"}
+            example: {name: Projector, description: HD projector}
+      responses:
+        "201":
+          description: Created.
+          headers:
+            Location:
+              description: URL of the new equipment.
+              schema: {type: string, example: /api/v1/equipment/1}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Equipment"}
+              example: {id: 1, name: Projector, description: HD projector}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+  /equipment/{equipmentId}:
+    parameters:
+      - $ref: "#/components/parameters/EquipmentId"
+    get:
+      tags: [Equipment]
+      summary: Get one piece of equipment
+      operationId: getEquipment
+      responses:
+        "200":
+          description: The equipment.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Equipment"}
+        "404": {$ref: "#/components/responses/NotFound"}
+    patch:
+      tags: [Equipment]
+      summary: Update name and/or description
+      description: Only the fields present in the body are changed. `description` may be set to `null` to clear it.
+      operationId: updateEquipment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/EquipmentUpdate"}
+            example: {description: HD projector, HDMI + USB-C}
+      responses:
+        "200":
+          description: The updated equipment.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Equipment"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+    delete:
+      tags: [Equipment]
+      summary: Remove equipment
+      operationId: deleteEquipment
+      responses:
+        "204": {description: Removed (no body).}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409":
+          description: The equipment still has active loans.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+              example:
+                error:
+                  code: conflict
+                  message: Equipment 1 has active loans; cancel them first.
+                  details: {active_loan_ids: [3]}
+  /loans:
+    get:
+      tags: [Loans]
+      summary: List loans
+      operationId: listLoans
+      parameters:
+        - name: equipment_id
+          in: query
+          schema: {type: integer, minimum: 1}
+        - name: status
+          in: query
+          schema: {type: string, enum: [active, cancelled]}
+      responses:
+        "200":
+          description: Matching loans, ordered by id.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LoanList"}
+              example:
+                items:
+                  - {id: 1, equipment_id: 1, from_date: "2026-11-01", to_date: "2026-11-05", status: active}
+                count: 1
+        "400": {$ref: "#/components/responses/ValidationError"}
+    post:
+      tags: [Loans]
+      summary: Create a loan
+      operationId: createLoan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/LoanCreate"}
+            example: {equipment_id: 1, from_date: "2026-11-01", to_date: "2026-11-05"}
+      responses:
+        "201":
+          description: Created. The new loan is `active`.
+          headers:
+            Location:
+              schema: {type: string, example: /api/v1/loans/1}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Loan"}
+              example: {id: 1, equipment_id: 1, from_date: "2026-11-01", to_date: "2026-11-05", status: active}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/LoanConflict"}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+  /loans/{loanId}:
+    parameters:
+      - $ref: "#/components/parameters/LoanId"
+    get:
+      tags: [Loans]
+      summary: Get one loan
+      operationId: getLoan
+      responses:
+        "200":
+          description: The loan.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Loan"}
+        "404": {$ref: "#/components/responses/NotFound"}
+    patch:
+      tags: [Loans]
+      summary: Change the dates of an active loan
+      description: Fields not present keep their current value.
+      operationId: changeLoan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/LoanUpdate"}
+            example: {to_date: "2026-11-07"}
+      responses:
+        "200":
+          description: The updated loan.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Loan"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409":
+          description: The loan is not active, or the new dates overlap another active loan.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+              examples:
+                overlap:
+                  value:
+                    error:
+                      code: conflict
+                      message: Equipment 1 is already loaned from 2026-11-08 to 2026-11-10 (loan 2).
+                      details: {conflicting_loan_id: 2, from_date: "2026-11-08", to_date: "2026-11-10"}
+                cancelled:
+                  value:
+                    error:
+                      code: conflict
+                      message: Loan 1 is cancelled and cannot be changed.
+                      details: {status: cancelled}
+        "415": {$ref: "#/components/responses/UnsupportedMediaType"}
+  /loans/{loanId}/cancel:
+    parameters:
+      - $ref: "#/components/parameters/LoanId"
+    post:
+      tags: [Loans]
+      summary: Cancel a loan
+      description: |
+        Marks the loan `cancelled` and frees its dates. The loan record is kept.
+        Idempotent: cancelling a cancelled loan returns 200 with the unchanged loan.
+        No request body.
+      operationId: cancelLoan
+      responses:
+        "200":
+          description: The loan, now cancelled.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Loan"}
+              example: {id: 1, equipment_id: 1, from_date: "2026-11-01", to_date: "2026-11-05", status: cancelled}
+        "404": {$ref: "#/components/responses/NotFound"}
+components:
+  parameters:
+    EquipmentId:
+      name: equipmentId
+      in: path
+      required: true
+      schema: {type: integer, minimum: 1}
+    LoanId:
+      name: loanId
+      in: path
+      required: true
+      schema: {type: integer, minimum: 1}
+  schemas:
+    Equipment:
+      type: object
+      required: [id, name, description]
+      properties:
+        id: {type: integer, example: 1}
+        name: {type: string, maxLength: 100, example: Projector}
+        description: {type: string, nullable: true, maxLength: 500, example: HD projector}
+    EquipmentCreate:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name: {type: string, minLength: 1, maxLength: 100}
+        description: {type: string, nullable: true, maxLength: 500}
+    EquipmentUpdate:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        name: {type: string, minLength: 1, maxLength: 100}
+        description: {type: string, nullable: true, maxLength: 500}
+    EquipmentList:
+      type: object
+      required: [items, count]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/Equipment"}}
+        count: {type: integer}
+    Loan:
+      type: object
+      required: [id, equipment_id, from_date, to_date, status]
+      properties:
+        id: {type: integer, example: 1}
+        equipment_id: {type: integer, example: 1}
+        from_date: {type: string, format: date, example: "2026-11-01"}
+        to_date: {type: string, format: date, example: "2026-11-05"}
+        status: {type: string, enum: [active, cancelled]}
+    LoanCreate:
+      type: object
+      required: [equipment_id, from_date, to_date]
+      additionalProperties: false
+      properties:
+        equipment_id: {type: integer, minimum: 1}
+        from_date: {type: string, format: date}
+        to_date: {type: string, format: date}
+    LoanUpdate:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        from_date: {type: string, format: date}
+        to_date: {type: string, format: date}
+    LoanList:
+      type: object
+      required: [items, count]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/Loan"}}
+        count: {type: integer}
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, details]
+          properties:
+            code:
+              type: string
+              enum: [validation_error, bad_request, not_found, conflict, method_not_allowed, unsupported_media_type, internal_error]
+            message: {type: string}
+            details: {type: object, additionalProperties: true}
+  responses:
+    ValidationError:
+      description: Malformed or invalid input (missing field, bad date, from after to, bad query value).
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+          example:
+            error:
+              code: validation_error
+              message: "'from_date' must not be after 'to_date'."
+              details: {from_date: "2026-11-10", to_date: "2026-11-01"}
+    NotFound:
+      description: The equipment or loan does not exist.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+          example:
+            error: {code: not_found, message: Equipment 99 does not exist., details: {equipment_id: 99}}
+    LoanConflict:
+      description: Equipment is already loaned in an overlapping range.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+          example:
+            error:
+              code: conflict
+              message: Equipment 1 is already loaned from 2026-11-01 to 2026-11-05 (loan 1).
+              details: {conflicting_loan_id: 1, from_date: "2026-11-01", to_date: "2026-11-05"}
+    UnsupportedMediaType:
+      description: Request body is not sent as `application/json`.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+          example:
+            error: {code: unsupported_media_type, message: Content-Type must be application/json., details: {}}

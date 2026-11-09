@@ -1,11 +1,27 @@
 services:
-  lending:
-    build: .
+  web:
+    build:
+      context: .
+      target: runtime
     image: equipment-lending:latest
-    # Only the database crosses the container boundary — the code comes
-    # from the image. lending.db must exist on the host first (run
-    # `make lending.db`, or `touch lending.db`), otherwise Docker will
-    # bind-mount a directory instead of a file and sqlite3 will fail to
-    # open it.
+    ports:
+      - "8000:8000"          # web app: http://localhost:8000
+    environment:
+      LENDING_DB: /data/lending.db
+      SECRET_KEY: ${SECRET_KEY:-dev-only-change-me}
     volumes:
-      - ./lending.db:/app/lending.db
+      # Named volume: managed by Docker, persists across `down`/`up`,
+      # rebuilds and container removal. Only `docker compose down -v` deletes it.
+      - lending-data:/data
+    restart: unless-stopped
+
+  # Run with:  docker compose run --rm tests
+  # (the "test" profile keeps it out of a normal `docker compose up`)
+  tests:
+    build:
+      context: .
+      target: test
+    profiles: ["test"]
+
+volumes:
+  lending-data:

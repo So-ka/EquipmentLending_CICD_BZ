@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Equipment · Equipment Lending{% endblock %}
+{% block content %}
+<h1>Equipment</h1>
+
+<section>
+  <h2>Add equipment</h2>
+  <form class="inline" method="post" action="{{ url_for('web.equipment_add') }}">
+    <label>Name <input name="name" required maxlength="100" value="{{ form.get('name','') }}"></label>
+    <label style="flex:1">Description <input name="description" maxlength="500" value="{{ form.get('description','') }}"></label>
+    <button>Add</button>
+  </form>
+</section>
+
+<section>
+  <h2>Find available equipment</h2>
+  <form class="inline" method="get" action="{{ url_for('web.equipment_page') }}">
+    <label>From <input type="date" name="available_from" value="{{ search.available_from }}"></label>
+    <label>To <input type="date" name="available_to" value="{{ search.available_to }}"></label>
+    <button>Search</button>
+    {% if searching %}<a class="btn secondary" href="{{ url_for('web.equipment_page') }}">Clear</a>{% endif %}
+  </form>
+</section>
+
+<section>
+  <h2>{% if searching %}Available {{ search.available_from }} → {{ search.available_to }}{% else %}All equipment{% endif %}</h2>
+  {% if items %}
+  <table>
+    <tr><th>ID</th><th>Name</th><th>Description</th><th></th></tr>
+    {% for e in items %}
+    <tr>
+      <td>{{ e.id }}</td><td>{{ e.name }}</td><td class="muted">{{ e.description or '' }}</td>
+      <td class="actions">
+        <a class="btn secondary" href="{{ url_for('web.loans_page', equipment_id=e.id) }}">Loans</a>
+        <a class="btn secondary" href="{{ url_for('web.equipment_edit', equipment_id=e.id) }}">Edit</a>
+        <form method="post" action="{{ url_for('web.equipment_delete', equipment_id=e.id) }}"
+              onsubmit="return confirm('Remove {{ e.name|e }}?')"><button class="danger">Remove</button></form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}<p class="muted">{% if searching %}No equipment available in that date range.{% else %}No equipment registered.{% endif %}</p>{% endif %}
+</section>
+{% endblock %}

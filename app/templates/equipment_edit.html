@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Edit equipment{% endblock %}
+{% block content %}
+<h1>Edit equipment #{{ item.id }}</h1>
+<section>
+  <form class="inline" method="post">
+    <label>Name <input name="name" required maxlength="100" value="{{ form.get('name') or '' }}"></label>
+    <label style="flex:1">Description <input name="description" maxlength="500" value="{{ form.get('description') or '' }}"></label>
+    <button>Save</button>
+    <a class="btn secondary" href="{{ url_for('web.equipment_page') }}">Cancel</a>
+  </form>
+</section>
+{% endblock %}

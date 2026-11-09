@@ -14,8 +14,8 @@ __pycache__/
 .idea/
 .DS_Store
 
-# Docker's own files and docs don't need to be in the build context
-Dockerfile
-docker-compose.yml
-.dockerignore
-README.md
+
+# Local environments / caches
+.venv/
+.pytest_cache/
+data/

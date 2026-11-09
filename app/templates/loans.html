@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Loans · Equipment Lending{% endblock %}
+{% block content %}
+<h1>Loans</h1>
+
+<section>
+  <h2>Create loan</h2>
+  {% if equipment %}
+  <form class="inline" method="post" action="{{ url_for('web.loans_add') }}">
+    <label>Equipment
+      <select name="equipment_id" required>
+        <option value="">Choose…</option>
+        {% for e in equipment %}<option value="{{ e.id }}" {{ 'selected' if form.get('equipment_id')|string == e.id|string }}>#{{ e.id }} {{ e.name }}</option>{% endfor %}
+      </select></label>
+    <label>From <input type="date" name="from_date" required value="{{ form.get('from_date','') }}"></label>
+    <label>To <input type="date" name="to_date" required value="{{ form.get('to_date','') }}"></label>
+    <button>Create loan</button>
+  </form>
+  {% else %}<p class="muted">Add some <a href="{{ url_for('web.equipment_page') }}">equipment</a> first.</p>{% endif %}
+</section>
+
+<section>
+  <h2>All loans</h2>
+  <form class="inline" method="get" style="margin-bottom:12px">
+    <label>Equipment
+      <select name="equipment_id"><option value="">Any</option>
+        {% for e in equipment %}<option value="{{ e.id }}" {{ 'selected' if filter.equipment_id == e.id|string }}>#{{ e.id }} {{ e.name }}</option>{% endfor %}
+      </select></label>
+    <label>Status
+      <select name="status"><option value="">Any</option>
+        <option value="active" {{ 'selected' if filter.status == 'active' }}>active</option>
+        <option value="cancelled" {{ 'selected' if filter.status == 'cancelled' }}>cancelled</option>
+      </select></label>
+    <button class="secondary">Filter</button>
+  </form>
+  {% if loans %}
+  <table>
+    <tr><th>ID</th><th>Equipment</th><th>From</th><th>To</th><th>Status</th><th></th></tr>
+    {% for l in loans %}
+    <tr>
+      <td>{{ l.id }}</td>
+      <td>{{ names.get(l.equipment_id, '?') }} <span class="muted">#{{ l.equipment_id }}</span></td>
+      <td>{{ l.from_date }}</td><td>{{ l.to_date }}</td>
+      <td><span class="tag {{ l.status }}">{{ l.status }}</span></td>
+      <td class="actions">
+        {% if l.status == 'active' %}
+        <a class="btn secondary" href="{{ url_for('web.loan_edit', loan_id=l.id) }}">Change</a>
+        <form method="post" action="{{ url_for('web.loan_cancel', loan_id=l.id) }}"
+              onsubmit="return confirm('Cancel loan {{ l.id }}?')"><button class="danger">Cancel</button></form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}<p class="muted">No loans found.</p>{% endif %}
+</section>
+{% endblock %}
